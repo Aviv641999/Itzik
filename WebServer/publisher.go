@@ -1,15 +1,51 @@
 package main
 
 import (
-	"bufio"
+	"fmt"
 	"net/http"
-	"os"
-	"strconv"
-	"strings"
 
 	"github.com/gin-gonic/gin"
 )
 
+type Song struct {
+	songName      string
+	artistName    string
+	releaseYear   int
+	albumName     string
+	songLengthSec int
+}
+
+type Album struct {
+	artistName  string
+	releaseYear int
+	songsList   []Song
+}
+
+// Get song
+// Return string that represent it
+func strSong(song Song) string {
+	return fmt.Sprintf("Name: %s, Artist: %s, Release Year: %d, Album: %s, Length: %d\n", song.songName, song.artistName, song.releaseYear, song.albumName, song.songLengthSec)
+}
+
+// Get array of songs
+// Return string that represent it
+func strSongsList(songsList []Song) string {
+
+	// Check if the array is empty
+	if len(songsList) == 0 {
+		return "No results found."
+	} else {
+		// Prepare return result
+		var stringOut string
+		// For every song
+		for _, song := range songsList {
+			stringOut = stringOut + strSong(song)
+		}
+		return stringOut
+	}
+}
+
+// Define API functions
 func setupRouter() *gin.Engine {
 
 	r := gin.Default()
@@ -20,35 +56,31 @@ func setupRouter() *gin.Engine {
 	})
 
 	// Search song route
-	r.GET("/search/all/:freetext", func(c *gin.Context) {
-		textToSearch := c.Params.ByName("freetext")
-		//textToSearch := c.Params.ByName("freetext")
-		f, err := os.Open("C:\\Users\\Aviv\\Desktop\\Aviv\\Cyber\\איציק\\Code\\ExcelDB\\SongsMetadata.txt")
-		if err != nil {
-			c.String(http.StatusOK, "Do Nothing")
-		}
-		defer f.Close()
+	r.GET("/search/songs/:songName", func(c *gin.Context) {
 
-		// Splits on newlines by default.
-		scanner := bufio.NewScanner(f)
-
-		line := 1
-		// https://golang.org/pkg/bufio/#Scanner.Scan
-		for scanner.Scan() {
-			if strings.Contains(scanner.Text(), textToSearch) {
-				c.String(http.StatusOK, "%s\n", strconv.Itoa(line))
-			}
-
-			line++
+		// need to implement search in redis by text
+		// meanwhile init the array
+		songsFound := []Song{
+			// songName, artistName, releaseYear, albumName, songLengthSec
+			{"Shney Meshugaim", "Omer Adam", 2022, "Haim Shely", 239},
+			{"Knafaim", "Tuna", 2019, "Abam", 211},
+			{"Yesh Li Otach", "Moshe Peretz", 2016, "Love", 226},
 		}
 
-		if err := scanner.Err(); err != nil {
-			// Handle the error
+		for _, song := range songsFound {
+			fmt.Printf("Title: %s, Artist: %s, releaseYear: %d\n", song.songName, song.artistName, song.releaseYear)
 		}
 
-		msg := "Bob Dylan"
+		// Convert to text
+		// msg := strSongsList(songsFound []Song)
+		// println(strSongsList(songsFound))
+		c.String(http.StatusOK, strSongsList(songsFound))
+	})
 
-		c.String(http.StatusOK, msg)
+	// Download song by id route
+	r.GET("/download/songs/:id", func(c *gin.Context) {
+		//idToDownload := c.Params.ByName("id")
+		// Download song to client
 	})
 
 	return r
@@ -56,6 +88,6 @@ func setupRouter() *gin.Engine {
 
 func main() {
 	r := setupRouter()
-	// Listen and Server in 0.0.0.0:8080
+	// Listen Server in 0.0.0.0:8080
 	r.Run(":8080")
 }
