@@ -1,3 +1,4 @@
+// publisher.go
 package main
 
 import (
@@ -6,26 +7,6 @@ import (
 
 	"github.com/gin-gonic/gin"
 )
-
-type Song struct {
-	songName      string
-	artistName    string
-	releaseYear   int
-	albumName     string
-	songLengthSec int
-}
-
-type Album struct {
-	artistName  string
-	releaseYear int
-	songsList   []Song
-}
-
-// Get song
-// Return string that represent it
-func strSong(song Song) string {
-	return fmt.Sprintf("Name: %s, Artist: %s, Release Year: %d, Album: %s, Length: %d\n", song.songName, song.artistName, song.releaseYear, song.albumName, song.songLengthSec)
-}
 
 // Get array of songs
 // Return string that represent it
@@ -39,7 +20,7 @@ func strSongsList(songsList []Song) string {
 		var stringOut string
 		// For every song
 		for _, song := range songsList {
-			stringOut = stringOut + strSong(song)
+			stringOut = stringOut + song.toString()
 		}
 		return stringOut
 	}
@@ -62,9 +43,9 @@ func setupRouter() *gin.Engine {
 		// meanwhile init the array
 		songsFound := []Song{
 			// songName, artistName, releaseYear, albumName, songLengthSec
-			{"Shney Meshugaim", "Omer Adam", 2022, "Haim Shely", 239},
-			{"Knafaim", "Tuna", 2019, "Abam", 211},
-			{"Yesh Li Otach", "Moshe Peretz", 2016, "Love", 226},
+			{001, "Shney Meshugaim", "Omer Adam", 2022, "Haim Shely", 239},
+			{002, "Knafaim", "Tuna", 2019, "Abam", 211},
+			{003, "Yesh Li Otach", "Moshe Peretz", 2016, "Love", 226},
 		}
 
 		for _, song := range songsFound {
@@ -81,13 +62,30 @@ func setupRouter() *gin.Engine {
 	r.GET("/download/songs/:id", func(c *gin.Context) {
 		//idToDownload := c.Params.ByName("id")
 		// Download song to client
+		c.String(http.StatusOK, SimpleHello())
 	})
 
 	return r
 }
 
 func main() {
-	r := setupRouter()
+	// r := setupRouter()
 	// Listen Server in 0.0.0.0:8080
-	r.Run(":8080")
+	// r.Run(":8080")
+
+	redisClient := ConnectRedisDB()
+
+	songsList := []Song{
+		// ID, songName, artistName, releaseYear, albumName, songLengthSec
+		{001, "Shney Meshugaim", "Omer Adam", 2022, "Haim Shely", 239},
+		{002, "Knafaim", "Tuna", 2019, "Abam", 211},
+		{003, "Yesh Li Otach", "Moshe Peretz", 2016, "Love", 226},
+	}
+
+	err := AppendNewSongs(redisClient, songsList)
+	if err != nil {
+		fmt.Printf("Failed to append new songs to redis DB.")
+	}
+
+	redisClient.Close()
 }
