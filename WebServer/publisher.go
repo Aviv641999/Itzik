@@ -3,9 +3,17 @@ package main
 
 import (
 	"fmt"
+	"log"
+	"math/rand"
 	"net/http"
+	"os"
+	"time"
 
 	"github.com/gin-gonic/gin"
+)
+
+const (
+	LogFile = "log.txt"
 )
 
 // Get array of songs
@@ -42,10 +50,10 @@ func setupRouter() *gin.Engine {
 		// need to implement search in redis by text
 		// meanwhile init the array
 		songsFound := []Song{
-			// songName, artistName, releaseYear, albumName, songLengthSec
-			{001, "Shney Meshugaim", "Omer Adam", 2022, "Haim Shely", 239},
-			{002, "Knafaim", "Tuna", 2019, "Abam", 211},
-			{003, "Yesh Li Otach", "Moshe Peretz", 2016, "Love", 226},
+			// id, songName, artistName, releaseYear, albumName, songLengthSec
+			{"00001", "Shney Meshugaim", "Omer Adam", 2022, "Haim Shely", 239},
+			{"00002", "Knafaim", "Tuna", 2019, "Abam", 211},
+			{"00003", "Yesh Li Otach", "Moshe Peretz", 2016, "Love", 226},
 		}
 
 		for _, song := range songsFound {
@@ -62,30 +70,35 @@ func setupRouter() *gin.Engine {
 	r.GET("/download/songs/:id", func(c *gin.Context) {
 		//idToDownload := c.Params.ByName("id")
 		// Download song to client
-		c.String(http.StatusOK, SimpleHello())
+		c.String(http.StatusOK, "")
 	})
 
 	return r
 }
 
 func main() {
-	// r := setupRouter()
-	// Listen Server in 0.0.0.0:8080
-	// r.Run(":8080")
+	// Setting log mechanism
+	f, errOpenFile := os.OpenFile(LogFile, os.O_RDWR|os.O_CREATE|os.O_APPEND, 0666)
+	if errOpenFile != nil {
+		log.Fatalf("error opening file: %v", errOpenFile)
+	}
+	log.SetOutput(f)
 
-	redisClient := ConnectRedisDB()
+	log.Println("--- Starting main... ---")
+	log.SetFlags(log.LstdFlags | log.Lshortfile)
 
-	songsList := []Song{
-		// ID, songName, artistName, releaseYear, albumName, songLengthSec
-		{001, "Shney Meshugaim", "Omer Adam", 2022, "Haim Shely", 239},
-		{002, "Knafaim", "Tuna", 2019, "Abam", 211},
-		{003, "Yesh Li Otach", "Moshe Peretz", 2016, "Love", 226},
+	// Setting rand seed
+	rand.Seed(time.Now().UnixNano())
+
+	/* r := setupRouter()
+	Listen Server in 0.0.0.0:8080
+	r.Run(":8080")*/
+
+	errAppendSongs := AppendNewSongs()
+	if errAppendSongs != nil {
+		log.Println("Failed to append new songs to redis DB: %v", errAppendSongs)
 	}
 
-	err := AppendNewSongs(redisClient, songsList)
-	if err != nil {
-		fmt.Printf("Failed to append new songs to redis DB.")
-	}
-
-	redisClient.Close()
+	log.Println("Ending main")
+	f.Close()
 }

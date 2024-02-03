@@ -8,7 +8,7 @@ import (
 )
 
 type Song struct {
-	id            int
+	id            string
 	songName      string
 	artistName    string
 	releaseYear   int
@@ -24,7 +24,7 @@ type Album struct {
 
 // Method returns string that represent it
 func (s Song) toString() string {
-	return fmt.Sprintf("ID: %d, Name: %s, Artist: %s, Release Year: %d, Album: %s, Length: %d\n", s.id, s.songName, s.artistName, s.releaseYear, s.albumName, s.songLengthSec)
+	return fmt.Sprintf("ID: %s, Name: %s, Artist: %s, Release Year: %d, Album: %s, Length: %d\n", s.id, s.songName, s.artistName, s.releaseYear, s.albumName, s.songLengthSec)
 }
 
 // Method convert song struct to map
@@ -39,7 +39,7 @@ func (s Song) toMap() map[string]string {
 
 	songMap := make(map[string]string)
 
-	songMap["id"] = strconv.Itoa(s.id)
+	songMap["id"] = s.id
 	songMap["name"] = s.songName
 	songMap["artistName"] = s.artistName
 	songMap["releaseYear"] = strconv.Itoa(s.releaseYear)
