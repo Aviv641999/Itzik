@@ -2,12 +2,10 @@
 package main
 
 import (
-	"fmt"
+	"errors"
 	"log"
-	"math/rand"
 	"net/http"
 	"os"
-	"time"
 
 	"github.com/gin-gonic/gin"
 )
@@ -16,22 +14,26 @@ const (
 	LogFile = "log.txt"
 )
 
-// Get array of songs
-// Return string that represent it
-func strSongsList(songsList []Song) string {
+// strSongsList return string that represents array of songs.
+// Parameters:
+//   - songsList: []Song array of song data.
+//
+// Returns:
+//   - string: represents array of songs
+//   - error: If succeeded return nil, If an error occurred returns error.
+func strSongsList(songsList []Song) (string, error) {
 
 	// Check if the array is empty
 	if len(songsList) == 0 {
-		return "No results found."
-	} else {
-		// Prepare return result
-		var stringOut string
-		// For every song
-		for _, song := range songsList {
-			stringOut = stringOut + song.toString()
-		}
-		return stringOut
+		return "", errors.New("The array is empty.")
 	}
+	// Prepare return result
+	var stringOut string
+	// For every song
+	for _, song := range songsList {
+		stringOut = stringOut + song.toString()
+	}
+	return stringOut, nil
 }
 
 // Define API functions
@@ -41,36 +43,66 @@ func setupRouter() *gin.Engine {
 
 	// Ping test route
 	r.GET("/ping", func(c *gin.Context) {
+		// Start
+		log.Println("Ping!")
+		// End
 		c.String(http.StatusOK, "pong")
 	})
 
-	// Search song route
-	r.GET("/search/songs/:songName", func(c *gin.Context) {
+	// Search route
+	r.GET("/search/:textToSearch", func(c *gin.Context) {
+		// Start
+		log.Println("Search!")
+		textToSearch := c.Params.ByName("textToSearch")
 
-		// need to implement search in redis by text
-		// meanwhile init the array
-		songsFound := []Song{
-			// id, songName, artistName, releaseYear, albumName, songLengthSec
-			{"00001", "Shney Meshugaim", "Omer Adam", 2022, "Haim Shely", 239},
-			{"00002", "Knafaim", "Tuna", 2019, "Abam", 211},
-			{"00003", "Yesh Li Otach", "Moshe Peretz", 2016, "Love", 226},
+		// Search text in RedisDB
+		stringOut, errSongsArray := SearchFreeText(textToSearch)
+		if errSongsArray != nil || stringOut == "" {
+			c.String(http.StatusOK, "There is no results.")
 		}
 
-		for _, song := range songsFound {
-			fmt.Printf("Title: %s, Artist: %s, releaseYear: %d\n", song.songName, song.artistName, song.releaseYear)
-		}
-
-		// Convert to text
-		// msg := strSongsList(songsFound []Song)
-		// println(strSongsList(songsFound))
-		c.String(http.StatusOK, strSongsList(songsFound))
+		//End
+		c.String(http.StatusOK, stringOut)
 	})
 
 	// Download song by id route
 	r.GET("/download/songs/:id", func(c *gin.Context) {
+		log.Println("Download!")
 		//idToDownload := c.Params.ByName("id")
 		// Download song to client
-		c.String(http.StatusOK, "")
+		c.String(http.StatusOK, "Download?")
+	})
+
+	// Initilization of RedisDB
+	r.GET("/redis/addsongs", func(c *gin.Context) {
+		// Start
+		log.Println("Add songs!")
+
+		// Write songs metadata to RedisDB
+		errAppendSongs := AppendNewSongsRedis()
+		if errAppendSongs != nil {
+			log.Printf("Failed to append new songs to redis DB: %v", errAppendSongs)
+			c.String(http.StatusOK, "Failed to append new songs to redis DB.")
+		}
+
+		// End
+		c.String(http.StatusOK, "pong")
+	})
+
+	// Flush all data in RedisDB
+	r.GET("/redis/flushall", func(c *gin.Context) {
+		// Start
+		log.Println("Flush all!")
+
+		// Remove all data in Redis DB
+		errFlushAll := FlushAllRedis()
+		if errFlushAll != nil {
+			log.Printf("Failed to delete all data in Redis DB: %v", errFlushAll)
+			c.String(http.StatusOK, "Failed to delete all data in Redis DB.")
+		}
+
+		// End
+		c.String(http.StatusOK, "pong")
 	})
 
 	return r
@@ -83,22 +115,15 @@ func main() {
 		log.Fatalf("error opening file: %v", errOpenFile)
 	}
 	log.SetOutput(f)
+	defer f.Close()
+	defer log.Println("Ending main")
 
 	log.Println("--- Starting main... ---")
 	log.SetFlags(log.LstdFlags | log.Lshortfile)
 
-	// Setting rand seed
-	rand.Seed(time.Now().UnixNano())
+	//End
+	r := setupRouter()
+	log.Println("Server is listening in 0.0.0.0:8080")
+	r.Run(":8080")
 
-	/* r := setupRouter()
-	Listen Server in 0.0.0.0:8080
-	r.Run(":8080")*/
-
-	errAppendSongs := AppendNewSongs()
-	if errAppendSongs != nil {
-		log.Println("Failed to append new songs to redis DB: %v", errAppendSongs)
-	}
-
-	log.Println("Ending main")
-	f.Close()
 }

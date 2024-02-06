@@ -40,11 +40,16 @@ func (s Song) toMap() map[string]string {
 	songMap := make(map[string]string)
 
 	songMap["id"] = s.id
-	songMap["name"] = s.songName
+	songMap["songName"] = s.songName
 	songMap["artistName"] = s.artistName
 	songMap["releaseYear"] = strconv.Itoa(s.releaseYear)
 	songMap["albumName"] = s.albumName
 	songMap["songLengthSec"] = strconv.Itoa(s.songLengthSec)
 
 	return songMap
+}
+
+// IsFilled checks if all fields of the song are filled.
+func (s *Song) IsAllFilled() bool {
+	return s.id != "" && s.songName != "" && s.artistName != "" && s.albumName != "" && s.releaseYear != 0 && s.songLengthSec != 0
 }

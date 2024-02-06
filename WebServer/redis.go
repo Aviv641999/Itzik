@@ -29,10 +29,28 @@ Redis MetaData Conventions:
 */
 
 const (
-	RedisAddress = "192.168.72.129:6379"
-	SongsFile    = "SongsToAppend.txt"
-	RandomRange  = 99999
+	RedisAddress   = "192.168.72.129:6379"
+	SongsFile      = "SongsToAppend.txt"
+	RandomRange    = 99999
+	SongPrefix     = "song:*"
+	ResultsPerScan = 5
 )
+
+// getAllKeys return array of string of all key names in redis DB.
+// Parameters:
+//   - r: The Redis client.
+//
+// Returns:
+//   - []string: array of string of all key names
+//   - error: if error eccur, the error description.
+func getAllKeys(r *redis.Client) ([]string, error) {
+	log.Println("Start getAllKeys")
+	arrResult, errKeys := r.Keys(context.Background(), "*").Result()
+	if errKeys != nil {
+		return nil, errKeys
+	}
+	return arrResult, nil
+}
 
 // generateNewIdForKey find new id for use by key.
 // Parameters:
@@ -68,7 +86,6 @@ func generateNewIdForKey(r *redis.Client, key string) string {
 
 // buildSongsArrFromFile read from file and build songs array by it.
 // Parameters:
-//   - r: The Redis client.
 //
 // Returns:
 //   - []Song: The array songs from the file.
@@ -120,7 +137,8 @@ func buildSongsArrFromFile(r *redis.Client) ([]Song, error) {
 // ConnectRedisDB make the initial connection with redisDB.
 // Returns:
 //   - r: The Redis client.
-func ConnectRedisDB() *redis.Client {
+//   - error: if error eccur, the error description.
+func ConnectRedisDB() (*redis.Client, error) {
 	// Define redis client options
 	r := redis.NewClient(&redis.Options{
 		Addr:     RedisAddress, // Default Redis address
@@ -132,10 +150,10 @@ func ConnectRedisDB() *redis.Client {
 	pong, err := r.Ping(context.Background()).Result()
 	if err != nil {
 		log.Println("Error connecting to Redis:", err)
-		return nil
+		return nil, err
 	}
 	log.Println("Connected to Redis:", pong)
-	return r
+	return r, nil
 }
 
 // setSongHash write to redis song HASH.
@@ -160,33 +178,206 @@ func setSongHash(r *redis.Client, key string, songMap map[string]string) error {
 	return nil
 }
 
-// AppendNewSongs write to redis songs from .
+// AppendNewSongs write to RedisDB songs from file.
 // Parameters:
-//   - r: The Redis client.
-//   - key: The redis key to write. (song:<5digitID>)
-//   - songMap: map[string]string object that describe the song data.
 //
 // Returns:
-//   - error: if error eccur, the error description.
-func AppendNewSongs() error {
-
+//   - error: If succeeded return nil, If an error occurred returns error.
+func AppendNewSongsRedis() error {
+	// Start
 	log.Println("Starting AppendNewSongs()")
-	r := ConnectRedisDB()
 
-	songsToAppend, errBuildArr := buildSongsArrFromFile(r)
-	if errBuildArr != nil {
-		return errBuildArr
+	// Connect to RedisDB
+	r, errConnectDB := ConnectRedisDB()
+	if errConnectDB != nil {
+		return errConnectDB
 	}
-	if songsToAppend == nil {
+
+	// Read from file and build songs array
+	songsToAppend, errBuildArr := buildSongsArrFromFile(r)
+	if errBuildArr != nil || songsToAppend == nil {
 		return errors.New("Failed to build songs array from file.")
 	}
+
+	// Write songs metadata to RedisDB
 	for _, song := range songsToAppend {
 		songMap := song.toMap()
 		key := "song:" + fmt.Sprint(song.id)
 		setSongHash(r, key, songMap)
 	}
 
-	log.Println("Close RedisDB")
+	// End
+	log.Println("AppendNewSongs: Close RedisDB")
 	r.Close()
 	return nil
+}
+
+// FlushAllRedis remove all data from RedisDB .
+// Parameters:
+//
+// Returns:
+//   - error: If succeeded return nil, If an error occurred returns error.
+func FlushAllRedis() error {
+	// Start
+	log.Println("Starting FlushAllRedis()")
+
+	// Connect to RedisDB
+	r, errConnectDB := ConnectRedisDB()
+	if errConnectDB != nil {
+		return errConnectDB
+	}
+
+	// Use HSet to set multiple fields in the hash
+	errFlush := r.FlushAll(context.Background()).Err()
+	if errFlush != nil {
+		log.Printf("Failed to remove all data in redis DB: %s.", errFlush)
+		return errFlush
+	}
+
+	// End
+	log.Println("FlushAllRedis: Close RedisDB")
+	r.Close()
+	return nil
+}
+
+// containsText check if the text contains in the array.
+// Parameters:
+//   - textToSearch: The text to search.
+//   - slice: array of string to search in.
+//
+// Returns:
+//   - bool: true if contains, false if not.
+func containsText(songMap map[string]string, text string) bool {
+
+	lowerText := strings.ToLower(text)
+	for _, value := range songMap {
+		if strings.Contains(strings.ToLower(value), lowerText) {
+			return true
+		}
+	}
+	return false
+
+}
+
+// mapToSong convert map to song struct.
+// Parameters:
+//   - songMap: represent song metadata from redis DB.
+//
+// Returns:
+//   - song: true if contains, false if not.
+func mapToSong(songMap map[string]string) (*Song, error) {
+	song := &Song{}
+	for key, value := range songMap {
+		switch key {
+		case "id":
+			song.id = value
+		case "songName":
+			song.songName = value
+		case "artistName":
+			song.artistName = value
+		case "albumName":
+			song.albumName = value
+		case "releaseYear":
+			// Assuming the releaseYear is provided as string, needs conversion
+			releaseYear, errYear := strconv.Atoi(value)
+			if errYear != nil {
+				log.Println("Error converting releaseYear:", errYear)
+				return song, errYear
+			}
+			song.songLengthSec = releaseYear
+		case "songLengthSec":
+			// Assuming the songLengthSec is provided as string, needs conversion
+			songLengthSec, errLength := strconv.Atoi(value)
+			if errLength != nil {
+				log.Println("Error converting songLengthSec:", errLength)
+				return song, errLength
+			}
+			song.songLengthSec = songLengthSec
+		}
+	}
+	if song.IsAllFilled() {
+		return song, nil
+	}
+	return song, errors.New("Without full metadata of song.")
+
+}
+
+// SearchFreeText search in RedisDB songs/albums by free text .
+// Parameters:
+//   - textToSearch: The text to search.
+//
+// Returns:
+//   - results: String that represents the result of search
+//   - error: If succeeded return nil, If an error occurred returns error.
+func SearchFreeText(textToSearch string) (string, error) {
+	// Start
+	log.Printf("Starting SearchFreeText(%s)", textToSearch)
+	stringOut := ""
+
+	// Connect to RedisDB
+	r, errConnectDB := ConnectRedisDB()
+	if errConnectDB != nil {
+		return "", errConnectDB
+	}
+
+	// Get all keys
+	// Set up the SCAN command with matching and counting
+	cursor := uint64(0)
+
+	// Until there is no results for Scan -> songs
+	for {
+		// Perform the SCAN command to get all keys
+		keys, nextCursor, errScanKeys := r.Scan(context.Background(), cursor, SongPrefix, int64(ResultsPerScan)).Result()
+		if errScanKeys != nil {
+			log.Fatalf("Failed to SCAN keys: %v", errScanKeys)
+			return "", errScanKeys
+		}
+
+		// Process the keys
+		for _, key := range keys {
+			// Retrieve the value of a specific fields in the hash
+			value, err := r.HGetAll(context.Background(), key).Result()
+			if err != nil {
+				log.Printf("Error retrieving fields for key '%s': %v", key, err)
+				continue
+			}
+
+			// Check if the value contains the desired text
+			if containsText(value, textToSearch) {
+				log.Printf("Key: %s, Value: %s\n", key, value)
+				songToAdd, errMapToSong := mapToSong(value)
+				if errMapToSong != nil {
+					log.Printf("Error convert map to song '%s': %v", key, errMapToSong)
+					continue
+				}
+				stringOut = stringOut + songToAdd.toString()
+			}
+		}
+
+		// Update the cursor for the next iteration
+		cursor = nextCursor
+
+		// Check if the iteration is complete
+		if cursor == 0 {
+			break
+		}
+	}
+
+	// End
+	log.Println("SearchFreeText: Close RedisDB")
+	r.Close()
+	return stringOut, nil
+}
+
+func TestGenerate() {
+	log.Println("Starting Test()")
+	r, errConnectDB := ConnectRedisDB()
+	if errConnectDB != nil {
+		return
+	}
+	for i := 0; i < 5; i++ {
+		fmt.Println("i: %d - ", i, generateNewIdForKey(r, "song"))
+	}
+	r.Close()
+	log.Println("Ending TestGenerate")
 }
